@@ -5,26 +5,18 @@ import (
 	"os"
 	"strconv"
 	"time"
+	appConfig "tsdb-shipper/cmd/ingester/app"
+	"tsdb-shipper/cmd/ingester/cmds"
+	"tsdb-shipper/cmd/ingester/db"
 
 	"github.com/go-kit/kit/log"
-
-	"github.com/prometheus/prometheus/tsdb"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
 	logger log.Logger
-
-	extLabels map[string]string
-
-	urlStorage           string
-	concurrentRequests   int
-	maxTSeriesPerRequest uint64
-	httpTimeout          int64
 )
-
-const ()
 
 func init() {
 	logger = log.NewLogfmtLogger(os.Stdout)
@@ -35,15 +27,8 @@ func main() {
 }
 
 func parseFlag() {
-	var (
-		tsDBDir       string
-		mint          int64
-		maxt          int64
-		partition     int64
-		humanReadable bool
-	)
 
-	extLabels = make(map[string]string)
+	config := appConfig.Create()
 
 	app := kingpin.New("Ingerter", "Ingerter of openTsdb historical time series data for Victoria-metrics server")
 
@@ -51,76 +36,71 @@ func parseFlag() {
 	shipCmd.Flag("url", "Remote addres of the destination storage").
 		Short('u').
 		Default("").
-		StringVar(&urlStorage)
+		StringVar(&config.URLStorage)
 
 	shipCmd.Flag("source", "Source directory of TSDB storage").
 		Short('s').
 		Default("").
-		StringVar(&tsDBDir)
+		StringVar(&config.DBDir)
 
 	shipCmd.Flag("external-label", "Label to add to each series from specified source").
 		Short('l').
 		PlaceHolder("name=value").
-		StringMapVar(&extLabels)
+		StringMapVar(&config.ExtLabels)
 
 	shipCmd.Flag("min-time", "Left edge of time range").
 		Short('b').
 		Default(strconv.FormatInt(math.MinInt64, 10)).
-		Int64Var(&mint)
+		Int64Var(&config.Mint)
 
 	shipCmd.Flag("max-time", "Right edge of time range").
 		Short('e').
 		Default(strconv.FormatInt(time.Now().Local().Unix()*1000, 10)).
-		Int64Var(&maxt)
+		Int64Var(&config.Maxt)
 
 	shipCmd.Flag("split-time", "Amount second for partition source timeseries").
 		Short('p').
 		Default("3600").
-		Int64Var(&partition)
+		Int64Var(&config.Partition)
 
 	shipCmd.Flag("http-concurrency", "Amount concurrent http-request").
 		Default("5").
-		IntVar(&concurrentRequests)
+		Uint8Var(&config.ConcurrentRequests)
 
 	shipCmd.Flag("http-timeout", "Timeout seconds of http-request").
 		Default("30").
-		Int64Var(&httpTimeout)
+		Int64Var(&config.HTTPTimeout)
 
-	shipCmd.Flag("ts-per-request", "Amount of sending timeseries per http-request").
+	shipCmd.Flag("send-max-size", "Approximate max size for http-request in MB").
 		Default("10").
-		Uint64Var(&maxTSeriesPerRequest)
+		IntVar(&config.MaxSizePerRequest)
+
+	shipCmd.Flag("read-write", "Open TsDB in read-write mode. Defailt: read-only").
+		Default("false").
+		BoolVar(&config.WriteModeDB)
+
 
 	lsCmd := app.Command("ls", "List blocks in scpecified directory")
 	lsCmd.Flag("source", "Source directory of TSDB storage").
 		Short('s').
 		Default("").
-		StringVar(&tsDBDir)
+		StringVar(&config.DBDir)
 
 	lsCmd.Flag("human-readable", "Print dates in human view").Short('h').
-		BoolVar(&humanReadable)
+		BoolVar(&config.HumanReadable)
 
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 
 	case lsCmd.FullCommand():
-		db := openTsdb(&tsDBDir)
+		db := db.Open(&config.DBDir, true)
 
-		printBlocksInfo(db, &humanReadable)
+		cmds.PrintBlocksInfo(db, &config.HumanReadable)
 
 	case shipCmd.FullCommand():
-		db := openTsdb(&tsDBDir)
-		httpTimeout = httpTimeout * int64(time.Second)
+		db := db.Open(&config.DBDir, !config.WriteModeDB)
 
-		shipMetrics(db, mint, maxt, partition)
+		config.HTTPTimeout = config.HTTPTimeout * int64(time.Second)
+		config.MaxSizePerRequest = config.MaxSizePerRequest * 1000 * 1000
+		cmds.ShipMetrics(db, config)
 	}
-}
-
-func openTsdb(path *string) *tsdb.DBReadOnly {
-	logger := log.With(logger, "stage", "openTsdb")
-	db, err := tsdb.OpenDBReadOnly(*path, logger)
-	if err != nil {
-		logger.Log("error", err)
-		os.Exit(1)
-	}
-	logger.Log("status", "TSDB opened successfully")
-	return db
 }

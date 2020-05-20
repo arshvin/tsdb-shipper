@@ -1,4 +1,4 @@
-package main
+package cmds
 
 import (
 	"fmt"
@@ -6,17 +6,18 @@ import (
 	"strconv"
 	"text/tabwriter"
 	"time"
+	"tsdb-shipper/cmd/ingester/db"
 
-	"github.com/prometheus/prometheus/tsdb"
-
+	"github.com/go-kit/kit/log"
 )
 
-func printBlocksInfo(db *tsdb.DBReadOnly, humanReadable *bool) {
+// PrintBlocksInfo list information about existing blocks
+func PrintBlocksInfo(db *db.DB, humanReadable *bool) {
+	logger := log.With(logger, "stage", "PrintBlocksInfo")
 
-	blocks, err := db.Blocks()
+	blocks, err := db.BlockReader()
 	if err != nil {
-		logger.Log("stage", "getting blocks", "error", err)
-		os.Exit(1)
+		logger.Log("error", err)
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
