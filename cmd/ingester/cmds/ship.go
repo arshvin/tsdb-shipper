@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -35,20 +36,21 @@ func ShipMetrics(db *db.DB, cfg *app.Config) {
 	logger := log.With(logger, "stage", "shipMetrics")
 
 	output := make(chan *fetchedData)
-	defer close(output)
 
 	pipeline := make(chan []byte, cfg.ConcurrentRequests+1)
 	go processTimeSeriesSet(output, pipeline, cfg.MaxSizePerRequest, cfg.ExtLabels)
 
+	var wg sync.WaitGroup
 	for i := 0; i < int(cfg.ConcurrentRequests); i++ {
-		go sendPreparedTimeSeries(pipeline, cfg.URLStorage, cfg.HTTPTimeout)
+		wg.Add(1)
+		go sendPreparedTimeSeries(&wg, pipeline, cfg.URLStorage, cfg.HTTPTimeout)
 	}
 
 	if cfg.Partition <= 0 {
 		cfg.Partition = 1
 	}
-	delta := cfg.Partition * int64(time.Microsecond)
 
+	delta := cfg.Partition * 1000 // Seconds -> Milliseconds
 	mint, maxt := checkTimeRange(db, cfg.Mint, cfg.Maxt)
 
 	logger.Log("from", mint, "to", maxt)
@@ -56,6 +58,12 @@ func ShipMetrics(db *db.DB, cfg *app.Config) {
 	for current := mint; current <= maxt; current += delta {
 		output <- getSeriesSetFor(db, current, current+delta)
 	}
+
+	close(output)
+	logger.Log("status", "waiting for finish senders")
+
+	wg.Wait()
+	logger.Log("status", "finished")
 }
 
 //This function is for shrinking specified in CLI time range to existing data time range
@@ -145,21 +153,17 @@ func getSeriesSetFor(db *db.DB, mint, maxt int64) *fetchedData {
 }
 
 func processTimeSeriesSet(input chan *fetchedData, output chan []byte, maxTSeriesPerRequest int, extLabels map[string]string) {
+
+	defer close(output)
 	logger := log.With(logger, "stage", "processTimeSeriesSet")
 
 	totalSeries := uint64(0)
 	totalSamples := uint64(0)
 
-	defer func() {
-		logger.Log("status", "finished", "total-uploaded-series-number", totalSeries, "total-uploaded-samples-number", totalSamples)
-	}()
-	defer close(output)
-
 	protoTSList := []prompb.TimeSeries{}
 
 	batchSize := 0
 	for fetchedData := range input {
-
 		for fetchedData.series.Next() {
 			series := fetchedData.series.At()
 
@@ -229,7 +233,7 @@ func getProtoTSSize(ts prompb.TimeSeries) int {
 	return ts.Size()
 }
 
-func sendPreparedTimeSeries(input chan []byte, urlStorage string, timeout int64) {
+func sendPreparedTimeSeries(wg *sync.WaitGroup, input chan []byte, urlStorage string, timeout int64) {
 	logger := log.With(logger, "stage", "sendPreparedTimeSeries")
 
 	writeErrorAndExit := func(err error) {
@@ -247,6 +251,7 @@ func sendPreparedTimeSeries(input chan []byte, urlStorage string, timeout int64)
 		case data, opened := <-input:
 			if !opened {
 				logger.Log("status", "goroutine finished")
+				wg.Done()
 				return
 			}
 

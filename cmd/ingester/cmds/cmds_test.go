@@ -61,49 +61,6 @@ func TestCheckTimeRange(t *testing.T) {
 	}
 }
 
-// func TestGetProtoTSSize(t *testing.T) {
-
-// 	lb := new(labels.Builder)
-// 	lb.Set("test", "TestGetSeriesSetFor")
-// 	lb.Set("environment", "test")
-// 	labels := lb.Labels()
-
-// 	metricSize := 0
-// 	ts := tsdb.Series
-
-// 	n := 10
-// 	for tsCount := 0; n < 10; tsCount++ {
-// 		t := int64(time.Now().Unix())
-// 		v := float64(1.0)
-
-// 		metricSize += int(unsafe.Sizeof(t))
-// 		metricSize += int(unsafe.Sizeof(t))
-// 	}
-
-// 	t2 := time.Now()
-
-// 	labelSize := 0
-// 	for _, label := range labels {
-// 		labelSize += len(label.Name)
-// 		labelSize += len(label.Value)
-// 	}
-
-// 	expectedSize := metricSize + (labelSize * n)
-
-// 	//Gathering saved metrics
-
-// 	data := getSeriesSetFor(db, t1.Unix(), t2.Unix())
-// 	actualSize := 0
-// 	for data.series.Next() {
-// 		protoTS, _ := seriesToProto(data.series.At())
-// 		actualSize += getProtoTSSize(protoTS)
-// 	}
-
-// 	if actualSize != expectedSize {
-// 		t.Errorf("Expected size: %d. Actual size: %d", expectedSize, actualSize)
-// 	}
-// }
-
 func TestGetProtoTSSize(t *testing.T) {
 	db, tmpDir := openTestDB(t)
 	defer closeTestDB(db, tmpDir)

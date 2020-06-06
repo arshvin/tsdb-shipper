@@ -10,5 +10,3 @@ require (
 	github.com/prometheus/tsdb v0.10.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
-
-// replace github.com/prometheus/prometheus => /Users/arshvin/public_repos/prometheus

@@ -48,17 +48,17 @@ func parseFlag() {
 		PlaceHolder("name=value").
 		StringMapVar(&config.ExtLabels)
 
-	shipCmd.Flag("min-time", "Left edge of time range").
+	shipCmd.Flag("min-time", "Left edge of time range (Unix timestamp in milliseconds)").
 		Short('b').
 		Default(strconv.FormatInt(math.MinInt64, 10)).
 		Int64Var(&config.Mint)
 
-	shipCmd.Flag("max-time", "Right edge of time range").
+	shipCmd.Flag("max-time", "Right edge of time range in (Unix timestamp milliseconds)").
 		Short('e').
 		Default(strconv.FormatInt(time.Now().Local().Unix()*1000, 10)).
 		Int64Var(&config.Maxt)
 
-	shipCmd.Flag("split-time", "Amount second for partition source timeseries").
+	shipCmd.Flag("split-time", "Amount seconds for partition time-range").
 		Short('p').
 		Default("3600").
 		Int64Var(&config.Partition)
